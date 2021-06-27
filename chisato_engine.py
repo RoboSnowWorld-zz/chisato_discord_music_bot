@@ -47,23 +47,16 @@ class Bot(discord.Client):
             self.help_embed.add_field(name=command, value=self.commands_description[command])
 
         self.queue_embed.set_image(url='https://i.imgur.com/KoramfR.jpeg')
-        try:
-            await self.check_queue()
-        except RuntimeError:
-            pass
 
-    async def check_queue(self):
+    async def play_queue(self, guild):
         while True:
-            while not self.queue:
-                await asyncio.sleep(1)
-            for guild in self.queue:
-                if self.vc[guild].is_playing() or self.paused[guild]:
-                    await asyncio.sleep(0)
-                elif not self.queue[guild]:
-                    await asyncio.sleep(0)
-                else:
-                    self.vc[guild].play(discord.FFmpegPCMAudio(source=self.queue[guild][0]['url']))
-                    self.queue[guild].pop(0)
+            if self.vc[guild].is_playing() or self.paused[guild]:
+                await asyncio.sleep(0)
+            elif self.queue[guild]:
+                self.vc[guild].play(discord.FFmpegPCMAudio(source=self.queue[guild][0]['url']))
+                self.queue[guild].pop(0)
+            else:
+                break
 
     async def on_message(self, message):
         if message.author == self.user:
@@ -126,6 +119,10 @@ class Bot(discord.Client):
                  'url': attachment_path,}
             )
             await command.channel.send(f'`{attachment.filename}` added to queue')
+            if self.vc[guild].is_playing():
+                return
+            else:
+                await self.play_queue(command.guild)
             return
 
         try:
@@ -145,6 +142,10 @@ class Bot(discord.Client):
              'title': title}
         )
         await command.channel.send(f'`{title}` added to queue')
+        if self.vc[guild].is_playing():
+            return
+        else:
+            await self.play_queue(command.guild)
 
     async def show_help(self, command):
         await command.channel.send(embed=self.help_embed)
@@ -157,12 +158,11 @@ class Bot(discord.Client):
 
     async def show_queue(self, command):
         await command.channel.send("Chisato queue:")
-        if command.guild not in self.queue:
-            if not await self.get_vc(command):
-                return
-            self.queue[command.guild] = []
-        for track in self.queue[command.guild]:
-            await command.channel.send(f"{track['title']}")
+        try:
+            for track in self.queue[command.guild]:
+                await command.channel.send(f"{track['title']}")
+        except KeyError:
+            pass
 
     async def clear_queue(self, command):
         guild = command.guild
